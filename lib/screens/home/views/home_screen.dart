@@ -14,6 +14,8 @@ import 'package:budget_tracker/screens/add_expense/blocs/create_income_bloc/crea
 import 'package:budget_tracker/screens/stats/stat_screen.dart';
 import '../blocs/get_incomes_bloc/get_incomes_bloc.dart';
 
+
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -25,6 +27,27 @@ class _HomeScreenState extends State<HomeScreen> {
   int index = 0;
   late Color selectedItem = Colors.blue;
   Color unselectedItem = Colors.grey;
+
+
+  String getCurrencySymbol(String currencyCode) {
+    const currencySymbols = {
+      'USD': '\$',
+      'EUR': '€',
+      'INR': '₹',
+      'JPY': '¥',
+      'GBP': '£',
+      'CNY': '¥',
+      'KRW': '₩',
+      'AUD': 'A\$',
+      'CAD': 'C\$',
+      'CHF': 'CHF',
+      'SGD': 'S\$',
+      'HKD': 'HK\$',
+    };
+
+    return currencySymbols[currencyCode] ?? currencyCode;
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -131,7 +154,10 @@ class _HomeScreenState extends State<HomeScreen> {
                                       ),
                                     ],
 
-                                    child: AddExpense(),
+                                    child: AddExpense(
+                                      selectedCurrency: 'JPY',
+
+                                    ),
 
                                   ),
                                 ),

@@ -3,7 +3,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-class MyChart extends StatelessWidget {
+class MyChart extends StatefulWidget {
   final Map<String, Map<String, double>> dateTotals;
   final double monthlyBudget;
 
@@ -14,136 +14,317 @@ class MyChart extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    final currencyFormatter = NumberFormat.currency(
-      locale: 'en_IN',
-      symbol: '₹',
-      decimalDigits: 0,
-    );
+  State<MyChart> createState() => _MyChartState();
+}
 
-    if (dateTotals.isEmpty) {
+class _MyChartState extends State<MyChart> {
+  String selectedChart = "Line Chart";
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.dateTotals.isEmpty) {
       return const Center(child: Text('No data'));
     }
 
-    final allDates = dateTotals.keys
-        .map((e) {
-      final parts = e.split('-');
-      return DateTime(
-        int.parse(parts[0]),
-        int.parse(parts[1]),
-        int.parse(parts[2]),
-      );
-    })
-        .toList()
-      ..sort();
+    // Sort dates
+    List<String> allDates = widget.dateTotals.keys.toList()..sort();
 
-    final firstDate = allDates.first;
-    final lastDate = allDates.last;
-
-    final List<String> continuousDates = [];
-    DateTime currentDate = firstDate;
-    while (!currentDate.isAfter(lastDate)) {
-      final key = "${currentDate.year.toString().padLeft(4, '0')}-${currentDate.month.toString().padLeft(2, '0')}-${currentDate.day.toString().padLeft(2, '0')}";
-      continuousDates.add(key);
-
-      dateTotals.putIfAbsent(key, () => {'expense': 0.0, 'income': 0.0});
-
-      currentDate = currentDate.add(const Duration(days: 1));
+    // Show weekly dates
+    List<String> displayDates = [];
+    for (int i = 0; i < allDates.length; i += 7) {
+      displayDates.add(allDates[i]);
     }
-    final displayDates = continuousDates.length > 10
-        ? continuousDates.sublist(continuousDates.length - 10)
-        : continuousDates;
-
-    final List<FlSpot> expenseSpots = [];
-    final List<FlSpot> incomeSpots = [];
-
-    double maxAmount = 0;
-
-    for (int i = 0; i < displayDates.length; i++) {
-      final date = displayDates[i];
-      final expense = dateTotals[date]!['expense'] ?? 0;
-      final income = dateTotals[date]!['income'] ?? 0;
-
-      expenseSpots.add(FlSpot(i.toDouble(), expense));
-      incomeSpots.add(FlSpot(i.toDouble(), income));
-
-      maxAmount = max(maxAmount, expense);
-      maxAmount = max(maxAmount, income);
+    if (allDates.isNotEmpty && displayDates.last != allDates.last) {
+      displayDates.add(allDates.last); // include last day
     }
-    final safeMaxY = monthlyBudget <= 0 ? 100.0 : monthlyBudget;
-    final interval = (safeMaxY / 5).ceilToDouble();
 
-    return LineChart(
-      LineChartData(
-        minY: 0,
-        maxY: safeMaxY,
-        lineBarsData: [
-          LineChartBarData(
-            spots: expenseSpots,
-            isCurved: true,
-            barWidth: 3,
-            color: Colors.redAccent,
-            dotData: FlDotData(show: true),
-            belowBarData: BarAreaData(show: false),
-          ),
-          LineChartBarData(
-            spots: incomeSpots,
-            isCurved: true,
-            barWidth: 3,
-            color: Colors.green,
-            dotData: FlDotData(show: true),
-            belowBarData: BarAreaData(show: false),
-          ),
-        ],
-        titlesData: FlTitlesData(
-          leftTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              reservedSize: 50,
-              interval: interval,
-              getTitlesWidget: (value, meta) {
-                return Text(
-                  currencyFormatter.format(value),
-                  style: const TextStyle(fontSize: 10),
-                );
-              },
-            ),
-          ),
-          bottomTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              reservedSize: 42,
-              getTitlesWidget: (value, meta) {
-                final index = value.toInt();
-                if (index >= 0 && index < displayDates.length) {
-                  final parts = displayDates[index].split('-');
-                  final date = DateTime(
-                    int.parse(parts[0]),
-                    int.parse(parts[1]),
-                    int.parse(parts[2]),
-                  );
-                  final formatted = DateFormat('d MMM').format(date);
-                  return SideTitleWidget(
-                    meta: meta,
-                    space: 8,
-                    child: Transform.rotate(
-                      angle: -0.5,
-                      child: Text(
-                        formatted,
+    double totalExpense = widget.dateTotals.values
+        .fold(0.0, (sum, e) => sum + (e['expense'] ?? 0.0));
+    double totalIncome = widget.dateTotals.values
+        .fold(0.0, (sum, e) => sum + (e['income'] ?? 0.0));
+    double total = totalIncome + totalExpense;
+    double expensePercent = total == 0 ? 0 : (totalExpense / total) * 100;
+    double incomePercent = total == 0 ? 0 : (totalIncome / total) * 100;
+
+    // Wrap heavy chart building inside a method for clarity
+    Widget buildChart() {
+      if (selectedChart == "Line Chart") {
+        double avgExpense = allDates.isEmpty ? 0 : totalExpense / allDates.length;
+        double avgIncome = allDates.isEmpty ? 0 : totalIncome / allDates.length;
+
+        final List<FlSpot> expenseSpots = [];
+        final List<FlSpot> incomeSpots = [];
+
+        for (int i = 0; i < allDates.length; i++) {
+          expenseSpots.add(FlSpot(i.toDouble(),
+              widget.dateTotals[allDates[i]]?['expense'] ?? 0.0));
+          incomeSpots.add(FlSpot(i.toDouble(),
+              widget.dateTotals[allDates[i]]?['income'] ?? 0.0));
+        }
+
+        return RepaintBoundary(
+          child: LineChart(
+            LineChartData(
+              minY: 0,
+              maxY: widget.monthlyBudget,
+              lineBarsData: [
+                LineChartBarData(
+                  spots: expenseSpots,
+                  isCurved: true,
+                  color: Colors.redAccent,
+                  barWidth: 3,
+                  dotData: const FlDotData(show: true),
+                ),
+                LineChartBarData(
+                  spots: incomeSpots,
+                  isCurved: true,
+                  color: Colors.green,
+                  barWidth: 3,
+                  dotData: const FlDotData(show: true),
+                ),
+              ],
+              titlesData: FlTitlesData(
+                topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                leftTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    reservedSize: 40,
+                    interval: widget.monthlyBudget / 6,
+                    getTitlesWidget: (value, meta) {
+                      return Text(
+                        '₹${value.toInt()}',
                         style: const TextStyle(fontSize: 10),
-                      ),
-                    ),
-                  );
-                }
-                return const Text('');
-              },
+                      );
+                    },
+                  ),
+                ),
+                bottomTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    reservedSize: 38,
+                    interval: 7,
+                    getTitlesWidget: (value, meta) {
+                      int index = value.toInt();
+                      if (index >= 0 && index < allDates.length) {
+                        String date = allDates[index];
+                        return Text(
+                          DateFormat('dd MMM').format(DateTime.parse(date)),
+                          style: const TextStyle(fontSize: 10),
+                        );
+                      }
+                      return const Text('');
+                    },
+                  ),
+                ),
+              ),
+              gridData: FlGridData(show: true),
+              lineTouchData: LineTouchData(
+                touchTooltipData: LineTouchTooltipData(
+                  getTooltipItems: (spots) {
+                    return spots.map((spot) {
+                      return LineTooltipItem(
+                          '${allDates[spot.x.toInt()]}\n₹${spot.y.toStringAsFixed(2)}',
+                          const TextStyle(color: Colors.black, fontSize: 12));
+                    }).toList();
+                  },
+                ),
+              ),
+              extraLinesData: ExtraLinesData(horizontalLines: [
+                HorizontalLine(
+                  y: avgExpense,
+                  color: Colors.redAccent.withOpacity(0.3),
+                  strokeWidth: 1,
+                  dashArray: [5, 5],
+                  label: HorizontalLineLabel(
+                      show: true,
+                      alignment: Alignment.topLeft,
+                      labelResolver: (_) =>
+                      'Avg Expense ₹${avgExpense.toStringAsFixed(0)}'),
+                ),
+                HorizontalLine(
+                  y: avgIncome,
+                  color: Colors.green.withOpacity(0.3),
+                  strokeWidth: 1,
+                  dashArray: [5, 5],
+                  label: HorizontalLineLabel(
+                      show: true,
+                      alignment: Alignment.topLeft,
+                      labelResolver: (_) =>
+                      'Avg Income ₹${avgIncome.toStringAsFixed(0)}'),
+                ),
+              ]),
             ),
+          ),
+        );
+      } else if (selectedChart == "Bar Chart") {
+        final List<BarChartGroupData> barGroups = [];
+        for (int i = 0; i < allDates.length; i++) {
+          barGroups.add(
+            BarChartGroupData(
+              x: i,
+              barRods: [
+                BarChartRodData(
+                  toY: widget.dateTotals[allDates[i]]?['expense'] ?? 0.0,
+                  color: Colors.redAccent,
+                  width: 6,
+                  borderRadius: BorderRadius.circular(3),
+                ),
+                BarChartRodData(
+                  toY: widget.dateTotals[allDates[i]]?['income'] ?? 0.0,
+                  color: Colors.green,
+                  width: 6,
+                  borderRadius: BorderRadius.circular(3),
+                ),
+              ],
+            ),
+          );
+        }
+
+        return RepaintBoundary(
+          child: BarChart(
+            BarChartData(
+              maxY: widget.monthlyBudget,
+              barGroups: barGroups,
+              titlesData: FlTitlesData(
+                rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                leftTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    reservedSize: 40,
+                    interval: widget.monthlyBudget / 6,
+                    getTitlesWidget: (value, meta) {
+                      return Text(
+                        '₹${value.toInt()}',
+                        style: const TextStyle(fontSize: 10),
+                      );
+                    },
+                  ),
+                ),
+                bottomTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    reservedSize: 38,
+                    interval: 7,
+                    getTitlesWidget: (value, meta) {
+                      int index = value.toInt();
+                      if (index >= 0 && index < allDates.length) {
+                        String date = allDates[index];
+                        return Text(
+                          DateFormat('dd MMM').format(DateTime.parse(date)),
+                          style: const TextStyle(fontSize: 10),
+                        );
+                      }
+                      return const Text('');
+                    },
+                  ),
+                ),
+              ),
+              barTouchData: BarTouchData(
+                enabled: true,
+                touchTooltipData: BarTouchTooltipData(
+                  getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                    String type = rodIndex == 0 ? "Expense" : "Income";
+                    return BarTooltipItem(
+                        '${allDates[group.x.toInt()]}\n$type: ₹${rod.toY.toStringAsFixed(2)}',
+                        const TextStyle(color: Colors.black, fontSize: 12));
+                  },
+                ),
+              ),
+            ),
+          ),
+        );
+      } else {
+        return RepaintBoundary(
+          child: PieChart(
+            PieChartData(
+              sections: [
+                PieChartSectionData(
+                  value: totalExpense,
+                  color: Colors.redAccent,
+                  title: "${expensePercent.toStringAsFixed(1)}%",
+                ),
+                PieChartSectionData(
+                  value: totalIncome,
+                  color: Colors.green,
+                  title: "${incomePercent.toStringAsFixed(1)}%",
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+    }
+
+    // Header + dropdown remains lightweight
+    return SafeArea(
+      child: Scaffold(
+        backgroundColor: Colors.grey.shade100,
+        body: Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          selectedChart == "Line Chart"
+                              ? "Income vs Expense Trend"
+                              : selectedChart == "Bar Chart"
+                              ? "Daily Income vs Expense"
+                              : "Income vs Expense Breakdown",
+                          style: const TextStyle(
+                              fontSize: 18, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          selectedChart == "Line Chart"
+                              ? "Track your daily income and expenses over time."
+                              : selectedChart == "Bar Chart"
+                              ? "Compare your daily expenses and income side by side."
+                              : "See how your total income compares with expenses.",
+                          style: TextStyle(
+                              fontSize: 12, color: Colors.grey.shade600),
+                        ),
+                      ],
+                    ),
+                  ),
+                  DropdownButton<String>(
+                    value: selectedChart,
+                    isDense: true,
+                    items: const [
+                      DropdownMenuItem(
+                          value: "Line Chart", child: Text("Line")),
+                      DropdownMenuItem(value: "Bar Chart", child: Text("Bar")),
+                      DropdownMenuItem(value: "Pie Chart", child: Text("Pie")),
+                    ],
+                    onChanged: (value) {
+                      setState(() {
+                        selectedChart = value!;
+                      });
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: buildChart(),
+                ),
+              ),
+            ],
           ),
         ),
-        gridData: FlGridData(show: true),
-        borderData: FlBorderData(show: true),
       ),
     );
   }
-
 }
